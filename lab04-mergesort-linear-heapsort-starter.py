@@ -14,6 +14,9 @@ import argparse
 import random
 import statistics
 import time
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 
 # ---------------------------------------------------------------------------
 # 1. Сортировки (реализуются вручную; sorted() используется только как эталон)
@@ -273,7 +276,7 @@ def bench(fn, data: list[int]) -> float:
     return statistics.median(times)
 
 
-def run_benchmarks(seed: int) -> None:
+def run_benchmarks(seed: int) -> dict:
     rng = random.Random(seed)
     algorithms = [
         ("merge_sort", merge_sort),
@@ -283,22 +286,49 @@ def run_benchmarks(seed: int) -> None:
         ("quick_sort (ЛР 3)", quick_sort),
         ("sorted() (эталон)", sorted),
     ]
+    
+    # Словарь для сохранения результатов
+    results = {}
+    
     for n in SIZES:
         datasets = make_datasets(rng, n)
         print(f"\nn = {n}:")
         for dist_name, data in datasets.items():
+            if dist_name not in results:
+                results[dist_name] = {algo: [] for algo, _ in algorithms}
+                
             print(f"  распределение {dist_name}:")
             for algo_name, fn in algorithms:
                 if algo_name == "counting_sort" and dist_name == "random_wide":
-                    # счётчики размера ~10^9 не помещаются в память — граница
-                    # применимости counting; зафиксировать в таблице свойств
                     print(f"    {algo_name:>18}: пропуск (диапазон ключей)")
                     continue
-                print(f"    {algo_name:>18}: t = {bench(fn, data):.6f} c")
-    # TODO: построить log-log графики (matplotlib) по каждому распределению;
-    # TODO: заполнить таблицу свойств: время (лучший/средний/худший),
-    #       память, стабильность, ограничения — для всех шести сортировок;
-    # TODO: объяснить расхождения замеров с асимптотикой в отчёте.
+                t = bench(fn, data)
+                print(f"    {algo_name:>18}: t = {t:.6f} c")
+                results[dist_name][algo_name].append((n, t))
+                
+    return results
+def plot_results(results: dict) -> None:
+    """Строит log-log графики для каждого распределения."""
+    for dist_name, algos in results.items():
+        plt.figure(figsize=(10, 6))
+        for algo_name, points in algos.items():
+            if not points:
+                continue
+            ns = [p[0] for p in points]
+            ts = [p[1] for p in points]
+            plt.loglog(ns, ts, marker="o", label=algo_name)
+            
+        plt.xlabel("размер входа n")
+        plt.ylabel("время, с")
+        plt.title(f"Бенчмарк ({dist_name}): log-log")
+        plt.grid(True, which="both", linewidth=0.3)
+        plt.legend()
+        plt.tight_layout()
+        
+        filename = f"lab04_{dist_name}_loglog.png"
+        plt.savefig(filename, dpi=150)
+        plt.close()
+        print(f"График сохранён: {filename}")
 
 
 def main() -> None:
@@ -308,7 +338,8 @@ def main() -> None:
     seed = 30 + args.variant
     random.seed(seed)
     self_check()
-    run_benchmarks(seed)
+    results = run_benchmarks(seed)
+    plot_results(results)
 
 
 if __name__ == "__main__":
